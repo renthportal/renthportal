@@ -42,6 +42,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
   const [proposals, setProposals] = useState([])
   const [customers, setCustomers] = useState([])
   const [drivers, setDrivers] = useState([])
+  const [allUsers, setAllUsers] = useState([])
   const [fleet, setFleet] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -71,13 +72,15 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
 
       const proposalIds = [...new Set((diData || []).map(d => d.proposal_id).filter(Boolean))]
       if (proposalIds.length > 0) {
-        const { data: propData } = await supabase.from('proposals').select('id, proposal_number, company_id').in('id', proposalIds)
+        const { data: propData } = await supabase.from('proposals').select('id, proposal_number, company_id, user_id').in('id', proposalIds)
         setProposals(propData || [])
       }
 
       if (isAdmin) {
-        const { data: drvData } = await supabase.from('users').select('id, full_name, role').in('role', ['DRIVER', 'OPERATIONS'])
-        setDrivers(drvData || [])
+        const { data: drvData } = await supabase.from('users').select('id, full_name, role')
+        setDrivers(drvData?.filter(u => u.role === 'DRIVER' || u.role === 'OPERATIONS') || [])
+        // Also store all users for sales rep lookup
+        setAllUsers(drvData || [])
         const { data: fleetData } = await supabase.from('fleet').select('id, serial_number, status, machine_id, machines(id, name)').order('serial_number')
         setFleet(fleetData || [])
       }
@@ -89,6 +92,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
 
   // ─── Helpers ───
   const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
+  const getSalesRepName = (uid) => allUsers.find(u => u.id === uid)?.full_name || '-'
   const getProposal = (pid) => proposals.find(p => p.id === pid)
   const getAvailableFleet = () => fleet.filter(f => ['available', 'müsait'].includes((f.status || '').toLowerCase()))
 
@@ -255,6 +259,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
                       <div className="flex items-center gap-3 flex-wrap">
                         <h3 className="text-lg font-bold text-gray-900">{proposalNo}</h3>
                         {isAdmin && <span className="text-sm text-gray-500 flex items-center gap-1"><Building className="w-4 h-4" />{customerName}</span>}
+                        {isAdmin && proposal?.user_id && <span className="text-sm text-blue-600 flex items-center gap-1"><User className="w-4 h-4" />{getSalesRepName(proposal.user_id)}</span>}
                         {allDone && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">Tamamlandı</span>}
                       </div>
                       <div className="flex gap-4 text-sm text-gray-500 mt-1">
