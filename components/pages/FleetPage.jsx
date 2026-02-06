@@ -555,7 +555,7 @@ const FleetPage = ({ showToast }) => {
           </label>
           <Button variant="outline" icon={FolderPlus} onClick={openCategoryModal}>Kategori Ekle</Button>
           <Button variant="outline" icon={Package} onClick={openMachineModal}>Makine Türü Ekle</Button>
-          <Button icon={Plus} onClick={openAddModal}>Yeni Ekle</Button>
+          <Button icon={Plus} onClick={openAddModal}>Yeni Makine Ekle</Button>
         </div>
       </div>
 
