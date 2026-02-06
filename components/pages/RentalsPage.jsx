@@ -122,8 +122,10 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
     if (statusFilter !== 'all') {
       const hasMatch = groupItems.some(i => {
         if (statusFilter === 'unassigned') return i.delivery_status === 'UNASSIGNED'
+        if (statusFilter === 'assigned') return i.delivery_status === 'ASSIGNED'
         if (statusFilter === 'planned') return i.delivery_status === 'PLANNED'
         if (statusFilter === 'delivered') return i.delivery_status === 'DELIVERED' && i.return_status !== 'RETURNED'
+        if (statusFilter === 'returnPlanned') return i.return_status === 'PLANNED'
         if (statusFilter === 'returned') return i.return_status === 'RETURNED'
         return true
       })
@@ -200,7 +202,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
           {[
             { label: 'Atanmadı', value: stats.unassigned, color: 'text-gray-600', bg: 'bg-gray-50' },
             { label: 'Atandı', value: stats.assigned, color: 'text-yellow-700', bg: 'bg-yellow-50' },
-            { label: 'Planlandı', value: stats.planned, color: 'text-blue-700', bg: 'bg-blue-50' },
+            { label: 'Teslim Planlandı', value: stats.planned, color: 'text-blue-700', bg: 'bg-blue-50' },
             { label: 'Teslim', value: stats.delivered, color: 'text-emerald-700', bg: 'bg-emerald-50' },
             { label: 'İade Planlı', value: stats.returnPlanned, color: 'text-orange-700', bg: 'bg-orange-50' },
             { label: 'İade Edildi', value: stats.returned, color: 'text-purple-700', bg: 'bg-purple-50' },
@@ -222,8 +224,10 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
           <option value="all">Tüm Durumlar</option>
           <option value="unassigned">Atanmadı</option>
-          <option value="planned">Planlandı</option>
-          <option value="delivered">Teslim Edildi</option>
+          <option value="assigned">Atandı</option>
+          <option value="planned">Teslim Planlandı</option>
+          <option value="delivered">Teslim</option>
+          <option value="returnPlanned">İade Planlı</option>
           <option value="returned">İade Edildi</option>
         </select>
       </div>
@@ -255,8 +259,8 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
                       </div>
                       <div className="flex gap-4 text-sm text-gray-500 mt-1">
                         <span className="flex items-center gap-1"><Package className="w-4 h-4" />{groupItems.length} makine</span>
-                        {deliveredCount > 0 && <span className="text-emerald-600">{deliveredCount} teslim</span>}
-                        {returnedCount > 0 && <span className="text-orange-600">{returnedCount} iade</span>}
+                        <span className="text-emerald-600">{deliveredCount}/{groupItems.length} teslim</span>
+                        {returnedCount > 0 && <span className="text-orange-600">{returnedCount}/{groupItems.length} iade</span>}
                       </div>
                     </div>
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
