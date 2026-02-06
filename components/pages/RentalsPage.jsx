@@ -431,27 +431,17 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                 </div>
                               )}
 
-                              {/* Customer: View form PDFs */}
-                              {isCustomer && (
+                              {/* Form PDF'leri - Hem müşteri hem admin */}
+                              {(item.delivery_pdf_url || item.return_pdf_url) && (
                                 <div className="flex gap-2 mt-2 flex-wrap">
-                                  {item.delivery_signature_url && (
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
+                                  {item.delivery_pdf_url && (
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
                                       <FileText className="w-3 h-3" />Teslimat Formu
                                     </button>
                                   )}
-                                  {item.return_signature_url && (
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
-                                      <FileText className="w-3 h-3" />İade Formu
-                                    </button>
-                                  )}
-                                  {item.delivery_pdf_url && (
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex items-center gap-1">
-                                      <Download className="w-3 h-3" />Teslimat PDF
-                                    </button>
-                                  )}
                                   {item.return_pdf_url && (
-                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 flex items-center gap-1">
-                                      <Download className="w-3 h-3" />İade PDF
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
+                                      <FileText className="w-3 h-3" />İade Formu
                                     </button>
                                   )}
                                 </div>
