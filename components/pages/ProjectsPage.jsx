@@ -5,7 +5,7 @@ import {
   FolderKanban, Package, Calendar, Building, Clock, CheckCircle, 
   Truck, Wrench, FileText, ChevronDown, ChevronUp, RefreshCw, 
   Plus, ArrowRight, Timer, AlertTriangle, RotateCcw,
-  Download, ClipboardList, FileSignature
+  Download, ClipboardList, FileSignature, User
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -19,6 +19,7 @@ import { SkeletonCards } from '@/components/ui/Skeleton'
 const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [projects, setProjects] = useState([])
   const [customers, setCustomers] = useState([])
+  const [salesReps, setSalesReps] = useState([])
   const [deliveryItems, setDeliveryItems] = useState([])
   const [fleet, setFleet] = useState([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +44,11 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     try {
       const { data: custData } = await supabase.from('customers').select('id, company_name')
       setCustomers(custData || [])
+
+      if (isAdmin) {
+        const { data: usersData } = await supabase.from('users').select('id, full_name, role')
+        setSalesReps(usersData || [])
+      }
 
       let query = supabase.from('proposals').select('*')
         .eq('status', 'CONVERTED')
@@ -76,6 +82,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   useEffect(() => { loadData() }, [loadData])
 
   const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
+  const getSalesRepName = (uid) => salesReps.find(u => u.id === uid)?.full_name || '-'
   const getProjectItems = (proposalId) => deliveryItems.filter(d => d.proposal_id === proposalId)
 
   const getDaysRunning = (item) => {
@@ -314,6 +321,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       
                       <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                         {isAdmin && <span className="flex items-center gap-1"><Building className="w-4 h-4" />{getCustomerName(project.company_id)}</span>}
+                        {isAdmin && project.user_id && <span className="flex items-center gap-1 text-blue-600"><User className="w-4 h-4" />{getSalesRepName(project.user_id)}</span>}
                         {earliestStart && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{earliestStart.toLocaleDateString('tr-TR')}</span>}
                         {latestEnd && <span className="flex items-center gap-1"><ArrowRight className="w-4 h-4" />{latestEnd.toLocaleDateString('tr-TR')}</span>}
                         <span className="flex items-center gap-1"><Package className="w-4 h-4" />{deliveredCount}/{totalMachines} teslim</span>
