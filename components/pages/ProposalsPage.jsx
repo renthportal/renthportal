@@ -196,8 +196,7 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
           start_date: startDate,
           end_date: endDate,
           total_amount: totalAmount,
-          total_machines: quoteItems.length,
-          machines_delivered: 0
+          total_machines: quoteItems.length
         }).select().single()
 
         if (rentalError) throw rentalError
@@ -668,7 +667,7 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="ghost" onClick={() => setShowApproveModal(false)}>İptal</Button>
-                <Button variant="success" loading={uploading} onClick={handleApprove} disabled={!approveFile}>Onayla ve Projeye Dönüştür</Button>
+                <Button variant="success" loading={uploading} onClick={handleApprove} disabled={!approveFile}>Sözleşmeyi Onayla</Button>
               </div>
             </>
           )}
