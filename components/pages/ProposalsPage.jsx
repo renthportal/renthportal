@@ -59,6 +59,7 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [districtsList, setDistrictsList] = useState([])
   const [newProposalItems, setNewProposalItems] = useState([{ machine_type: '', duration: 1, period: 'Ay', rental_price: 0, rental_discount: 0, transport_price: 0, transport_discount: 0, estimated_start: '', estimated_end: '', item_notes: '' }])
   const [machineTypesList, setMachineTypesList] = useState([])
+  const [salesReps, setSalesReps] = useState([])
 
   const loadData = async () => {
     setLoading(true)
@@ -68,14 +69,16 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     setProposals(data || [])
     // Load companies + machines for staff new proposal
     if (isAdmin) {
-      const [compRes, machRes, citiesRes] = await Promise.all([
+      const [compRes, machRes, citiesRes, usersRes] = await Promise.all([
         supabase.from('companies').select('id, name').order('name'),
         supabase.from('machines').select('name').order('name'),
-        supabase.from('cities').select('*').order('name')
+        supabase.from('cities').select('*').order('name'),
+        supabase.from('users').select('id, full_name')
       ])
       setCompaniesList(compRes.data || [])
       setMachineTypesList([...new Set((machRes.data || []).map(m => m.name))])
       setCitiesList(citiesRes.data || [])
+      setSalesReps(usersRes.data || [])
     }
     setLoading(false)
   }
@@ -322,7 +325,12 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       <h3 className="font-bold text-base lg:text-lg text-gray-900">{proposal.proposal_number}</h3>
                       <StatusBadge status={proposal.status} size="sm" />
                     </div>
-                    {isAdmin && <p className="text-gray-600 mb-2 text-sm">{proposal.company?.name}</p>}
+                    {isAdmin && (
+                      <div className="flex items-center gap-3 mb-2 text-sm">
+                        <span className="text-gray-600">{proposal.company?.name}</span>
+                        {proposal.user_id && <span className="text-blue-600 flex items-center gap-1"><User className="w-3.5 h-3.5" />{salesReps.find(u => u.id === proposal.user_id)?.full_name || '-'}</span>}
+                      </div>
+                    )}
                     <div className="mt-2 space-y-1">
                       {items.slice(0, 3).map((item, i) => (
                         <div key={i} className="text-sm text-gray-600 flex items-center gap-2"><Package className="w-4 h-4 text-gray-400 flex-shrink-0" /><span className="truncate">{item.machine_type} - {item.duration} {item.period}</span></div>
