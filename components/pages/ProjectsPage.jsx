@@ -317,7 +317,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                         {earliestStart && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{earliestStart.toLocaleDateString('tr-TR')}</span>}
                         {latestEnd && <span className="flex items-center gap-1"><ArrowRight className="w-4 h-4" />{latestEnd.toLocaleDateString('tr-TR')}</span>}
                         <span className="flex items-center gap-1"><Package className="w-4 h-4" />{deliveredCount}/{totalMachines} teslim</span>
-                        {returnedCount > 0 && <span className="flex items-center gap-1 text-orange-600"><RotateCcw className="w-4 h-4" />{returnedCount} iade</span>}
+                        {returnedCount > 0 && <span className="flex items-center gap-1 text-orange-600"><RotateCcw className="w-4 h-4" />{returnedCount}/{totalMachines} iade</span>}
                         {!isCustomer && project.total_amount && (
                           <span className="font-medium text-gray-900">₺{Number(project.total_amount).toLocaleString('tr-TR')}</span>
                         )}
