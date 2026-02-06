@@ -104,8 +104,13 @@ const DeliveryReturnForm = ({ item, type, user, onComplete, onClose, showToast }
   const handlePhotoAdd = (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
-    setPhotos(prev => [...prev, ...files.map(f => URL.createObjectURL(f))])
-    setPhotoFiles(prev => [...prev, ...files])
+    const maxPhotos = 15
+    const remaining = maxPhotos - photos.length
+    if (remaining <= 0) { showToast('En fazla 15 fotoğraf yüklenebilir', 'error'); return }
+    const toAdd = files.slice(0, remaining)
+    setPhotos(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
+    setPhotoFiles(prev => [...prev, ...toAdd])
+    if (files.length > remaining) showToast(`En fazla 15 fotoğraf. ${files.length - remaining} fotoğraf eklenmedi.`, 'error')
   }
   const removePhoto = (i) => { setPhotos(prev => prev.filter((_, idx) => idx !== i)); setPhotoFiles(prev => prev.filter((_, idx) => idx !== i)) }
 
@@ -181,16 +186,20 @@ const DeliveryReturnForm = ({ item, type, user, onComplete, onClose, showToast }
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
-      {/* Header */}
+      {/* Header - Auto-filled info */}
       <div className={`rounded-xl p-4 ${isDelivery ? 'bg-blue-50 border border-blue-100' : 'bg-orange-50 border border-orange-100'}`}>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isDelivery ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
             {isDelivery ? '📦 Teslimat Formu' : '🔄 İade Formu'}
           </span>
+          <span className="text-xs text-gray-400">{new Date().toLocaleString('tr-TR')}</span>
         </div>
         <h4 className="font-semibold text-gray-900">{item.machine_type}</h4>
         {item.assigned_machine_name && <p className="text-sm text-gray-600">{item.assigned_machine_serial} — {item.assigned_machine_name}</p>}
-        {item.proposal?.company?.name && <p className="text-xs text-gray-400 mt-0.5">{item.proposal.company.name}</p>}
+        <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+          {item.proposalNumber && <span className="bg-white px-2 py-0.5 rounded border">📋 {item.proposalNumber}</span>}
+          {item.customerName && <span className="bg-white px-2 py-0.5 rounded border">🏢 {item.customerName}</span>}
+        </div>
       </div>
 
       {/* Sayaç & Yakıt */}
@@ -255,7 +264,7 @@ const DeliveryReturnForm = ({ item, type, user, onComplete, onClose, showToast }
 
       {/* Fotoğraflar */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Fotoğraflar {photos.length > 0 && <span className="text-gray-400">({photos.length})</span>}</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Fotoğraflar <span className="text-gray-400">({photos.length}/15)</span></label>
         <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-2">
           {photos.map((url, i) => (
             <div key={i} className="relative aspect-square rounded-lg overflow-hidden border border-gray-200">
@@ -263,13 +272,15 @@ const DeliveryReturnForm = ({ item, type, user, onComplete, onClose, showToast }
               <button onClick={() => removePhoto(i)} className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs leading-none">×</button>
             </div>
           ))}
-          <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-colors">
-            <Camera className="w-5 h-5 text-gray-400 mb-0.5" />
-            <span className="text-[10px] text-gray-400">Ekle</span>
-            <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoAdd} className="hidden" />
-          </label>
+          {photos.length < 15 && (
+            <label className="aspect-square rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 transition-colors">
+              <Camera className="w-5 h-5 text-gray-400 mb-0.5" />
+              <span className="text-[10px] text-gray-400">Ekle</span>
+              <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoAdd} className="hidden" />
+            </label>
+          )}
         </div>
-        <p className="text-xs text-gray-400">Makine genel, sayaç, hasar (varsa), teslim noktası</p>
+        <p className="text-xs text-gray-400">Makine genel, sayaç, hasar (varsa), teslim noktası • En fazla 15 fotoğraf</p>
       </div>
 
       {/* İmza Canvas */}
