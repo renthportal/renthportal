@@ -339,9 +339,24 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                     {proposal.status === 'REJECTED' && proposal.rejection_reason && (
                       <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-xs font-medium text-red-800">Red Sebebi:</p><p className="text-sm text-red-700">{proposal.rejection_reason}</p></div>
                     )}
-                    {/* Sözleşme badge */}
+                    {/* Sözleşme badge + İmzalı PDF */}
                     {(proposal.status === 'CONTRACTED' || proposal.status === 'CONVERTED') && (
-                      <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /><p className="text-sm font-medium text-emerald-700">Sözleşmeye dönüştürüldü - Proje oluşturuldu</p></div>
+                      <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <p className="text-sm font-medium text-emerald-700">Sözleşmeye dönüştürüldü - Proje oluşturuldu</p>
+                          </div>
+                          {proposal.signed_pdf_url && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(proposal.signed_pdf_url), '_blank') }}
+                              className="text-xs px-2.5 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1 flex-shrink-0"
+                            >
+                              <Download className="w-3 h-3" />İmzalı Sözleşme
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-row lg:flex-col gap-2 flex-shrink-0">
