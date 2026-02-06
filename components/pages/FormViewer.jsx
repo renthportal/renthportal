@@ -107,6 +107,9 @@ const FormViewer = ({ item, type, onClose }) => {
       const logoHtml = `<img src="${logoB64}" style="height:50px"/>`
       const sigHtml = sigB64 ? `<img src="${sigB64}"/>` : '<p style="padding:20px;color:#ccc">İmza yok</p>'
       
+      const proposalNum = item.proposal?.proposal_number || item.proposalNumber || '-'
+      const companyName = item.proposal?.company?.name || item.customerName || '-'
+      
       const html = `<!DOCTYPE html><html><head><title>${isDelivery ? 'Teslimat' : 'İade'} Formu</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#333;font-size:13px}
 .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #C41E3A;padding-bottom:15px;margin-bottom:20px}
@@ -135,8 +138,8 @@ const FormViewer = ({ item, type, onClose }) => {
 </div>
 <div class="section"><div class="section-title">GENEL BİLGİLER</div>
 <div class="row"><span class="label">Tarih</span><span class="value">${d.completedAt ? new Date(d.completedAt).toLocaleString('tr-TR') : '-'}</span></div>
-<div class="row"><span class="label">Teklif No</span><span class="value">${item.proposal?.proposal_number || '-'}</span></div>
-<div class="row"><span class="label">Firma</span><span class="value">${item.proposal?.company?.name || '-'}</span></div>
+<div class="row"><span class="label">Teklif No</span><span class="value">${proposalNum}</span></div>
+<div class="row"><span class="label">Firma</span><span class="value">${companyName}</span></div>
 <div class="row"><span class="label">${isDelivery ? 'Teslim Alan' : 'İade Eden'}</span><span class="value">${d.personName || '-'}</span></div>
 ${d.lat ? `<div class="row"><span class="label">Konum</span><span class="value">${Number(d.lat).toFixed(6)}, ${Number(d.lng).toFixed(6)}</span></div>` : ''}</div>
 <div class="section"><div class="section-title">MAKİNE BİLGİLERİ</div>
