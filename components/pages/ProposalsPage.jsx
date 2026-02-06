@@ -162,49 +162,16 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       await supabase.from('proposals').update({ 
         status: 'CONVERTED', 
         approved_at: new Date().toISOString(),
-        signed_contract_url: urlData.publicUrl
+        signed_pdf_url: urlData.publicUrl
       }).eq('id', selectedProposal.id)
 
-      // 3. Auto-create project (rental + delivery_items)
+      // 3. Auto-create delivery_items from quote_items
       const quoteItems = selectedProposal.quote_items ? JSON.parse(selectedProposal.quote_items) : []
       if (quoteItems.length > 0) {
-        const today = new Date()
-        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
-        const { count } = await supabase.from('rentals').select('*', { count: 'exact', head: true }).gte('created_at', today.toISOString().slice(0, 10))
-        const rentalNo = `PRJ-${dateStr}-${String((count || 0) + 1).padStart(3, '0')}`
+        const today = new Date().toISOString().slice(0, 10)
 
-        const totalAmount = quoteItems.reduce((s, i) => s + ((i.rental_price || 0) - (i.rental_discount || 0)) * (i.duration || 1) + ((i.transport_price || 0) - (i.transport_discount || 0)), 0)
-        const startDate = quoteItems[0]?.estimated_start || today.toISOString().slice(0, 10)
-        let endDate = quoteItems[0]?.estimated_end
-        if (!endDate) {
-          const duration = parseInt(quoteItems[0]?.duration) || 1
-          const period = (quoteItems[0]?.period || 'Ay').toLowerCase()
-          const end = new Date(startDate)
-          if (period.includes('gün')) end.setDate(end.getDate() + duration)
-          else if (period.includes('hafta')) end.setDate(end.getDate() + duration * 7)
-          else end.setMonth(end.getMonth() + duration)
-          endDate = end.toISOString().slice(0, 10)
-        }
-
-        // Create rental/project
-        const { data: rentalData, error: rentalError } = await supabase.from('rentals').insert({
-          rental_no: rentalNo,
-          proposal_id: selectedProposal.id,
-          customer_id: selectedProposal.customer_id || user.customer_id,
-          company_id: selectedProposal.company_id,
-          status: 'active',
-          start_date: startDate,
-          end_date: endDate,
-          total_amount: totalAmount,
-          total_machines: quoteItems.length
-        }).select().single()
-
-        if (rentalError) throw rentalError
-
-        // Create delivery items
         const deliveryItemsData = quoteItems.map((item, index) => ({
           proposal_id: selectedProposal.id,
-          rental_id: rentalData.id,
           company_id: selectedProposal.company_id,
           item_index: index + 1,
           machine_type: item.machine_type || 'Belirtilmemiş',
@@ -212,12 +179,13 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
           period: item.period || 'Ay',
           rental_price: parseFloat(item.rental_price) || 0,
           transport_price: parseFloat(item.transport_price) || 0,
-          estimated_start: item.estimated_start || startDate,
-          estimated_end: item.estimated_end || endDate,
+          estimated_start: item.estimated_start || today,
+          estimated_end: item.estimated_end || null,
           delivery_status: 'UNASSIGNED',
           return_status: 'NONE'
         }))
-        await supabase.from('delivery_items').insert(deliveryItemsData)
+        const { error: diError } = await supabase.from('delivery_items').insert(deliveryItemsData)
+        if (diError) throw diError
 
         // Mark proposal as transferred
         await supabase.from('proposals').update({ transferred_to_rental: true }).eq('id', selectedProposal.id)
