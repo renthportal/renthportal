@@ -307,58 +307,114 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
         </div>
       </Card>
 
-      {/* Proposal Cards with Visual Hierarchy */}
-      <div className="grid gap-4">
+      {/* Proposal Cards */}
+      <div className="space-y-5">
         {paginate(filteredProposals, page).map(proposal => {
           const items = parseItemsFromNotes(proposal.notes)
           const address = parseAddressFromNotes(proposal.notes)
-          const borderClass = STATUS_CONFIG[proposal.status]?.border || 'border-l-gray-300'
+          const sc = STATUS_CONFIG[proposal.status] || {}
           const isActionNeeded = (!isAdmin && proposal.status === 'QUOTED') || (isAdmin && (proposal.status === 'PENDING' || proposal.status === 'REJECTED'))
 
+          // Status-specific subtle bg
+          const statusBg = {
+            PENDING: 'bg-amber-50/40',
+            QUOTED: 'bg-blue-50/40',
+            REJECTED: 'bg-red-50/30',
+            CONVERTED: 'bg-emerald-50/30',
+            CONTRACTED: 'bg-emerald-50/30',
+          }[proposal.status] || 'bg-white'
+
           return (
-            <Card key={proposal.id} className={`overflow-hidden border-l-4 ${borderClass} ${isActionNeeded ? 'ring-1 ring-blue-200 shadow-md' : ''}`}>
-              {isActionNeeded && <div className="bg-blue-50 px-4 py-1.5 text-xs font-medium text-blue-700 flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Aksiyon gerekli</div>}
-              <div className="p-4 lg:p-6">
+            <div key={proposal.id} className={`rounded-2xl border ${isActionNeeded ? 'border-blue-300 shadow-lg shadow-blue-100/50' : 'border-gray-200 shadow-sm'} overflow-hidden transition-all hover:shadow-md ${statusBg}`}>
+              {/* Status color bar top */}
+              <div className={`h-1.5 ${sc.bg || 'bg-gray-200'}`} />
+              
+              {/* Action needed banner */}
+              {isActionNeeded && (
+                <div className="bg-blue-50 border-b border-blue-100 px-5 py-2 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-xs font-semibold text-blue-700">Aksiyon gerekli</span>
+                </div>
+              )}
+
+              <div className="p-5 lg:p-6">
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  {/* Left content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-bold text-base lg:text-lg text-gray-900">{proposal.proposal_number}</h3>
+                    {/* Header row: Number + Status */}
+                    <div className="flex items-center gap-3 mb-3 flex-wrap">
+                      <h3 className="font-bold text-lg text-gray-900 tracking-tight">{proposal.proposal_number}</h3>
                       <StatusBadge status={proposal.status} size="sm" />
                     </div>
+
+                    {/* Admin info row: Company + Sales rep */}
                     {isAdmin && (
-                      <div className="flex items-center gap-3 mb-2 text-sm">
-                        <span className="text-gray-600">{proposal.company?.name}</span>
-                        {proposal.user_id && <span className="text-blue-600 flex items-center gap-1"><User className="w-3.5 h-3.5" />{salesReps.find(u => u.id === proposal.user_id)?.full_name || '-'}</span>}
+                      <div className="flex items-center gap-4 mb-3 pb-3 border-b border-gray-100">
+                        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                          <Building2 className="w-4 h-4 text-gray-400" />{proposal.company?.name}
+                        </span>
+                        {proposal.user_id && (
+                          <span className="flex items-center gap-1.5 text-sm text-blue-600">
+                            <User className="w-3.5 h-3.5" />{salesReps.find(u => u.id === proposal.user_id)?.full_name || '-'}
+                          </span>
+                        )}
                       </div>
                     )}
-                    <div className="mt-2 space-y-1">
+
+                    {/* Machine items */}
+                    <div className="space-y-1.5 mb-3">
                       {items.slice(0, 3).map((item, i) => (
-                        <div key={i} className="text-sm text-gray-600 flex items-center gap-2"><Package className="w-4 h-4 text-gray-400 flex-shrink-0" /><span className="truncate">{item.machine_type} - {item.duration} {item.period}</span></div>
+                        <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
+                          <Package className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                          <span className="truncate">{item.machine_type} — {item.duration} {item.period}</span>
+                        </div>
                       ))}
-                      {items.length > 3 && <p className="text-xs text-gray-400">+{items.length - 3} makine daha</p>}
+                      {items.length > 3 && <p className="text-xs text-gray-400 pl-6">+{items.length - 3} makine daha</p>}
                     </div>
-                    {address && <div className="mt-2 text-sm text-gray-500 flex items-center gap-1"><MapPin className="w-4 h-4 flex-shrink-0" /><span className="truncate">{address}</span></div>}
-                    <div className="mt-3 flex items-center gap-3 flex-wrap text-sm">
-                      {proposal.total_amount > 0 && <span className="font-bold text-[#C41E3A]">{getCurrencySymbol(proposal.currency)}{proposal.total_amount?.toLocaleString()}</span>}
-                      <span className="text-gray-400">{new Date(proposal.created_at).toLocaleDateString('tr-TR')}</span>
-                      {proposal.payment_term && <span className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded text-xs">{getPaymentTermLabel(proposal.payment_term)}</span>}
-                    </div>
-                    {/* Red sebebi göster */}
-                    {proposal.status === 'REJECTED' && proposal.rejection_reason && (
-                      <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg"><p className="text-xs font-medium text-red-800">Red Sebebi:</p><p className="text-sm text-red-700">{proposal.rejection_reason}</p></div>
+
+                    {/* Address */}
+                    {address && (
+                      <div className="text-sm text-gray-500 flex items-center gap-1.5 mb-3">
+                        <MapPin className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                        <span className="truncate">{address}</span>
+                      </div>
                     )}
-                    {/* Sözleşme badge + İmzalı PDF */}
+
+                    {/* Price / Date / Payment row */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {proposal.total_amount > 0 && (
+                        <span className="text-base font-bold text-[#C41E3A]">
+                          {getCurrencySymbol(proposal.currency)}{proposal.total_amount?.toLocaleString()}
+                        </span>
+                      )}
+                      <span className="text-sm text-gray-400">{new Date(proposal.created_at).toLocaleDateString('tr-TR')}</span>
+                      {proposal.payment_term && (
+                        <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                          {getPaymentTermLabel(proposal.payment_term)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Rejection reason */}
+                    {proposal.status === 'REJECTED' && proposal.rejection_reason && (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+                        <p className="text-xs font-semibold text-red-800 mb-0.5">Red Sebebi</p>
+                        <p className="text-sm text-red-700">{proposal.rejection_reason}</p>
+                      </div>
+                    )}
+
+                    {/* Converted badge + signed PDF */}
                     {(proposal.status === 'CONTRACTED' || proposal.status === 'CONVERTED') && (
-                      <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <p className="text-sm font-medium text-emerald-700">Sözleşmeye dönüştürüldü - Proje oluşturuldu</p>
+                            <p className="text-sm font-medium text-emerald-700">Sözleşmeye dönüştürüldü — Proje oluşturuldu</p>
                           </div>
                           {proposal.signed_pdf_url && (
                             <button
                               onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(proposal.signed_pdf_url), '_blank') }}
-                              className="text-xs px-2.5 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1 flex-shrink-0"
+                              className="text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-1 flex-shrink-0 font-medium"
                             >
                               <Download className="w-3 h-3" />İmzalı Sözleşme
                             </button>
@@ -367,22 +423,18 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       </div>
                     )}
                   </div>
+
+                  {/* Right actions */}
                   <div className="flex flex-row lg:flex-col gap-2 flex-shrink-0">
                     <Button size="sm" variant="ghost" icon={Eye} onClick={() => { setSelectedProposal(proposal); setShowDetailModal(true) }}>Detay</Button>
-                    {/* Staff: Fiyat Ver (PENDING) */}
                     {isAdmin && proposal.status === 'PENDING' && <Button size="sm" variant="primary" onClick={() => openQuoteModal(proposal)}>Fiyat Ver</Button>}
-                    {/* Staff: Revize Ver (REJECTED) */}
                     {isAdmin && proposal.status === 'REJECTED' && <Button size="sm" variant="primary" onClick={() => handleRevise(proposal)}>Revize Ver</Button>}
-                    {/* Customer: Onayla + Reddet (QUOTED) */}
                     {!isAdmin && proposal.status === 'QUOTED' && (
                       <>
                         <Button size="sm" variant="success" onClick={() => { setSelectedProposal(proposal); setApproveFile(null); setShowApproveModal(true) }}>Onayla</Button>
                         <Button size="sm" variant="danger" onClick={() => { setSelectedProposal(proposal); setRejectReason(''); setShowRejectModal(true) }}>Reddet</Button>
                       </>
                     )}
-                    {/* PDF İndir (QUOTED, CONTRACTED) */}
-                    
-                    {/* Teklif PDF Oluştur */}
                     {['QUOTED', 'CONTRACTED', 'CONVERTED'].includes(proposal.status) && proposal.quote_items && (
                       <Button size="sm" variant="outline" icon={FileText} onClick={async (e) => {
                         e.stopPropagation()
@@ -397,7 +449,7 @@ const ProposalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                   </div>
                 </div>
               </div>
-            </Card>
+            </div>
           )
         })}
       </div>
