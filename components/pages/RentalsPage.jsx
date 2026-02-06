@@ -17,7 +17,7 @@ import { SkeletonCards } from '@/components/ui/Skeleton'
 const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [deliveryItems, setDeliveryItems] = useState([])
   const [customers, setCustomers] = useState([])
-  const [rentals, setRentals] = useState([])
+  const [proposals, setProposals] = useState([])
   const [fleet, setFleet] = useState([])
   const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -45,8 +45,9 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       const { data: custData } = await supabase.from('customers').select('id, company_name')
       setCustomers(custData || [])
 
-      const { data: rentalsData } = await supabase.from('rentals').select('*')
-      setRentals(rentalsData || [])
+      // Load proposals for grouping headers
+      const { data: proposalsData } = await supabase.from('proposals').select('id, proposal_number, company_id, status')
+      setProposals(proposalsData || [])
 
       if (!isCustomer) {
         const { data: fleetData } = await supabase
@@ -63,9 +64,6 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       if (isCustomer && user?.company_id) {
         query = query.eq('company_id', user.company_id)
       }
-      if (isCustomer && user?.customer_id) {
-        query = query.eq('company_id', user.customer_id)
-      }
       const { data: itemsData } = await query
       setDeliveryItems(itemsData || [])
     } catch (err) {
@@ -76,8 +74,8 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const getCustomerName = (customerId) => customers.find(c => c.id === customerId)?.company_name || '-'
-  const getRentalNo = (rentalId) => rentals.find(r => r.id === rentalId)?.rental_no || '-'
+  const getCustomerName = (companyId) => customers.find(c => c.id === companyId)?.company_name || '-'
+  const getProposalNo = (proposalId) => proposals.find(p => p.id === proposalId)?.proposal_number || '-'
 
   const getDeliveryStatusInfo = (status) => {
     const statuses = {
@@ -110,20 +108,19 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       const s = search.toLowerCase()
       return item.machine_type?.toLowerCase().includes(s) ||
              getCustomerName(item.company_id).toLowerCase().includes(s) ||
-             getRentalNo(item.rental_id).toLowerCase().includes(s)
+             getProposalNo(item.proposal_id).toLowerCase().includes(s)
     }
     return true
   })
 
-  // Gruplama: Rental ID'ye göre
-  const groupedByRental = filteredItems.reduce((acc, item) => {
-    const key = item.rental_id || 'no-rental'
+  // Group by proposal_id
+  const groupedByProposal = filteredItems.reduce((acc, item) => {
+    const key = item.proposal_id || 'no-proposal'
     if (!acc[key]) acc[key] = []
     acc[key].push(item)
     return acc
   }, {})
 
-  // Müsait makineler
   const getAvailableMachines = () => {
     return fleet.filter(f => {
       const s = (f.status || '').toLowerCase()
@@ -171,13 +168,15 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     if (!deliveryPlanForm.date) { showToast('Tarih seçin', 'error'); return }
     setSaving(true)
     try {
-      const driver = drivers.find(d => d.id === deliveryPlanForm.driver_id)
+      // Combine date + time into timestamptz
+      const dateTime = deliveryPlanForm.time 
+        ? `${deliveryPlanForm.date}T${deliveryPlanForm.time}:00` 
+        : `${deliveryPlanForm.date}T09:00:00`
+
       await supabase.from('delivery_items').update({
-        planned_date: deliveryPlanForm.date,
-        planned_time: deliveryPlanForm.time || null,
-        driver_id: deliveryPlanForm.driver_id || null,
-        driver_name: driver?.full_name || null,
-        vehicle_plate: deliveryPlanForm.plate || null,
+        delivery_planned_date: dateTime,
+        delivery_driver_id: deliveryPlanForm.driver_id || null,
+        delivery_vehicle_plate: deliveryPlanForm.plate || null,
         delivery_route_notes: deliveryPlanForm.notes || null,
         delivery_status: 'PLANNED'
       }).eq('id', selectedItem.id)
@@ -197,15 +196,12 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     try {
       await supabase.from('delivery_items').update({
         delivery_status: 'DELIVERED',
-        delivered_at: new Date().toISOString()
+        delivery_completed_at: new Date().toISOString(),
+        delivery_completed_by: user?.id || null
       }).eq('id', item.id)
 
       if (item.assigned_machine_id) {
         await supabase.from('fleet').update({ status: 'rented', customer_id: item.company_id }).eq('id', item.assigned_machine_id)
-      }
-
-      if (item.rental_id) {
-        // machines_delivered tracked via delivery_items status
       }
 
       showToast('Teslim edildi olarak işaretlendi', 'success')
@@ -226,12 +222,13 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     if (!returnPlanForm.date) { showToast('Tarih seçin', 'error'); return }
     setSaving(true)
     try {
-      const driver = drivers.find(d => d.id === returnPlanForm.driver_id)
+      const dateTime = returnPlanForm.time 
+        ? `${returnPlanForm.date}T${returnPlanForm.time}:00` 
+        : `${returnPlanForm.date}T09:00:00`
+
       await supabase.from('delivery_items').update({
-        return_planned_date: returnPlanForm.date,
-        return_planned_time: returnPlanForm.time || null,
+        return_planned_date: dateTime,
         return_driver_id: returnPlanForm.driver_id || null,
-        return_driver_name: driver?.full_name || null,
         return_vehicle_plate: returnPlanForm.plate || null,
         return_route_notes: returnPlanForm.notes || null,
         return_status: 'PLANNED'
@@ -252,7 +249,8 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     try {
       await supabase.from('delivery_items').update({
         return_status: 'RETURNED',
-        returned_at: new Date().toISOString()
+        return_completed_at: new Date().toISOString(),
+        return_completed_by: user?.id || null
       }).eq('id', item.id)
 
       if (item.assigned_machine_id) {
@@ -321,7 +319,7 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
       {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Makine, müşteri, proje ara..." className="flex-1 max-w-md" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Makine, müşteri, teklif ara..." className="flex-1 max-w-md" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg">
           <option value="all">Tüm Durumlar</option>
           <option value="UNASSIGNED">Makine Atanmadı</option>
@@ -333,24 +331,24 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
         </select>
       </div>
 
-      {/* Teslimat Listesi - Projeye Göre Gruplu */}
-      {Object.keys(groupedByRental).length === 0 ? (
+      {/* Teslimat Listesi - Teklife Göre Gruplu */}
+      {Object.keys(groupedByProposal).length === 0 ? (
         <EmptyState icon={Truck} title="Teslimat bulunamadı" description={isCustomer ? "Henüz teslimat kaydınız yok." : "Kriterlere uygun teslimat kalemi yok."} />
       ) : (
         <div className="space-y-4">
-          {Object.entries(groupedByRental).map(([rentalId, items]) => {
-            const rental = rentals.find(r => r.id === rentalId)
+          {Object.entries(groupedByProposal).map(([proposalId, items]) => {
+            const proposal = proposals.find(p => p.id === proposalId)
             const customerName = getCustomerName(items[0]?.company_id)
-            const isExpanded = expandedId === rentalId
+            const isExpanded = expandedId === proposalId
 
             return (
-              <Card key={rentalId} className="overflow-hidden">
+              <Card key={proposalId} className="overflow-hidden">
                 {/* Proje Header */}
-                <div className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100" onClick={() => setExpandedId(isExpanded ? null : rentalId)}>
+                <div className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100" onClick={() => setExpandedId(isExpanded ? null : proposalId)}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 flex-wrap">
                       <div>
-                        <p className="font-bold text-gray-900">{rental?.rental_no || 'Proje Yok'}</p>
+                        <p className="font-bold text-gray-900">{proposal?.proposal_number || 'Teklif Yok'}</p>
                         {!isCustomer && <p className="text-sm text-gray-500 flex items-center gap-1"><Building className="w-4 h-4" />{customerName}</p>}
                       </div>
                       <div className="flex gap-2 flex-wrap">
@@ -393,65 +391,66 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                   <StatusIcon className="w-3 h-3" />{dStatus.label}
                                 </span>
                                 {item.return_status && item.return_status !== 'NONE' && (
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${rStatus.color}`}>
-                                    <RotateCcw className="w-3 h-3 inline mr-1" />{rStatus.label}
-                                  </span>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium border ${rStatus.color}`}>{rStatus.label}</span>
                                 )}
                               </div>
-                              
-                              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+
+                              <div className="flex flex-wrap gap-3 text-sm text-gray-600">
                                 <span>{item.duration} {item.period}</span>
                                 {item.assigned_machine_serial && !isCustomer && (
                                   <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs">SN: {item.assigned_machine_serial}</span>
                                 )}
-                                {item.planned_date && (
-                                  <span className="flex items-center gap-1 text-xs">
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    Teslimat: {new Date(item.planned_date).toLocaleDateString('tr-TR')}
-                                    {item.planned_time && ` ${item.planned_time}`}
+                                {item.delivery_planned_date && (
+                                  <span className="text-blue-600 flex items-center gap-1 text-xs">
+                                    <Calendar className="w-3 h-3" />Teslimat: {new Date(item.delivery_planned_date).toLocaleDateString('tr-TR')}
+                                    {' '}{new Date(item.delivery_planned_date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 )}
-                                {item.driver_name && !isCustomer && (
-                                  <span className="flex items-center gap-1 text-xs"><User className="w-3.5 h-3.5" />{item.driver_name}</span>
-                                )}
-                                {item.delivered_at && (
-                                  <span className="text-emerald-600 text-xs flex items-center gap-1">
-                                    <CheckCircle className="w-3.5 h-3.5" />Teslim: {new Date(item.delivered_at).toLocaleDateString('tr-TR')}
+                                {item.delivery_completed_at && (
+                                  <span className="text-emerald-600 flex items-center gap-1 text-xs">
+                                    <CheckCircle className="w-3 h-3" />Teslim: {new Date(item.delivery_completed_at).toLocaleDateString('tr-TR')}
                                   </span>
                                 )}
                                 {item.return_planned_date && (
-                                  <span className="text-orange-600 text-xs flex items-center gap-1">
-                                    <Calendar className="w-3.5 h-3.5" />İade: {new Date(item.return_planned_date).toLocaleDateString('tr-TR')}
-                                    {item.return_planned_time && ` ${item.return_planned_time}`}
+                                  <span className="text-orange-600 flex items-center gap-1 text-xs">
+                                    <RotateCcw className="w-3 h-3" />İade Plan: {new Date(item.return_planned_date).toLocaleDateString('tr-TR')}
+                                    {' '}{new Date(item.return_planned_date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 )}
-                                {item.returned_at && (
-                                  <span className="text-teal-600 text-xs flex items-center gap-1">
-                                    <RotateCcw className="w-3.5 h-3.5" />İade: {new Date(item.returned_at).toLocaleDateString('tr-TR')}
+                                {item.return_completed_at && (
+                                  <span className="text-teal-600 flex items-center gap-1 text-xs">
+                                    <CheckCircle className="w-3 h-3" />İade: {new Date(item.return_completed_at).toLocaleDateString('tr-TR')}
                                   </span>
                                 )}
                               </div>
 
-                              {/* Customer: Form/PDF links */}
+                              {!isCustomer && (item.delivery_vehicle_plate || item.return_vehicle_plate) && (
+                                <div className="flex gap-3 mt-1 text-xs text-gray-500">
+                                  {item.delivery_vehicle_plate && <span className="flex items-center gap-1"><Truck className="w-3 h-3" />Teslimat: {item.delivery_vehicle_plate}</span>}
+                                  {item.return_vehicle_plate && <span className="flex items-center gap-1"><Truck className="w-3 h-3" />İade: {item.return_vehicle_plate}</span>}
+                                </div>
+                              )}
+
+                              {/* Customer: View form PDFs */}
                               {isCustomer && (
                                 <div className="flex gap-2 mt-2 flex-wrap">
-                                  {item.delivery_form_url && (
-                                    <button onClick={() => window.open(fixStorageUrl(item.delivery_form_url), '_blank')} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
+                                  {item.delivery_signature_url && (
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
                                       <FileText className="w-3 h-3" />Teslimat Formu
                                     </button>
                                   )}
-                                  {item.delivery_pdf_url && (
-                                    <button onClick={() => window.open(fixStorageUrl(item.delivery_pdf_url), '_blank')} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex items-center gap-1">
-                                      <Download className="w-3 h-3" />Teslimat PDF
-                                    </button>
-                                  )}
-                                  {item.return_form_url && (
-                                    <button onClick={() => window.open(fixStorageUrl(item.return_form_url), '_blank')} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
+                                  {item.return_signature_url && (
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
                                       <FileText className="w-3 h-3" />İade Formu
                                     </button>
                                   )}
+                                  {item.delivery_pdf_url && (
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex items-center gap-1">
+                                      <Download className="w-3 h-3" />Teslimat PDF
+                                    </button>
+                                  )}
                                   {item.return_pdf_url && (
-                                    <button onClick={() => window.open(fixStorageUrl(item.return_pdf_url), '_blank')} className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 flex items-center gap-1">
+                                    <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 flex items-center gap-1">
                                       <Download className="w-3 h-3" />İade PDF
                                     </button>
                                   )}
@@ -462,7 +461,6 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                             {/* Aksiyonlar - Staff Only */}
                             {!isCustomer && (
                               <div className="flex flex-wrap gap-2 flex-shrink-0">
-                                {/* Teslimat Akışı */}
                                 {item.delivery_status === 'UNASSIGNED' && (
                                   <Button size="sm" variant="primary" icon={Package} onClick={() => openAssignModal(item)}>Makine Ata</Button>
                                 )}
@@ -472,7 +470,6 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                 {item.delivery_status === 'PLANNED' && (
                                   <Button size="sm" variant="success" icon={CheckCircle} onClick={() => handleDelivered(item)}>Teslim Edildi</Button>
                                 )}
-                                {/* İade Akışı */}
                                 {item.delivery_status === 'DELIVERED' && (!item.return_status || item.return_status === 'NONE') && (
                                   <Button size="sm" variant="outline" icon={RotateCcw} onClick={() => openReturnPlanModal(item)}>İade Planla</Button>
                                 )}
