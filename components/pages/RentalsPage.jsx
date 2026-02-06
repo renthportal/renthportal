@@ -205,10 +205,7 @@ const RentalsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       }
 
       if (item.rental_id) {
-        const rental = rentals.find(r => r.id === item.rental_id)
-        if (rental) {
-          await supabase.from('rentals').update({ machines_delivered: (rental.machines_delivered || 0) + 1 }).eq('id', item.rental_id)
-        }
+        // machines_delivered tracked via delivery_items status
       }
 
       showToast('Teslim edildi olarak işaretlendi', 'success')
