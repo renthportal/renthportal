@@ -3,9 +3,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase, fixStorageUrl } from '@/lib/supabase'
 import {
   FolderKanban, Package, Calendar, Building, Clock, CheckCircle, 
-  AlertCircle, Truck, Wrench, FileText, ChevronDown, ChevronUp, RefreshCw, 
-  Plus, ArrowRight, Timer, AlertTriangle, Eye, Send, RotateCcw,
-  Download, ClipboardList
+  Truck, Wrench, FileText, ChevronDown, ChevronUp, RefreshCw, 
+  Plus, ArrowRight, Timer, AlertTriangle, RotateCcw,
+  Download, ClipboardList, FileSignature
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -20,7 +20,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [projects, setProjects] = useState([])
   const [customers, setCustomers] = useState([])
   const [deliveryItems, setDeliveryItems] = useState([])
-  const [serviceRequests, setServiceRequests] = useState([])
   const [fleet, setFleet] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -32,8 +31,8 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedProject, setSelectedProject] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
-  const [serviceForm, setServiceForm] = useState({ description: '', type: 'breakdown', priority: 'normal' })
-  const [extensionForm, setExtensionForm] = useState({ additional_days: 7, reason: '' })
+  const [serviceForm, setServiceForm] = useState({ delivery_item_id: '', description: '', type: 'breakdown', priority: 'normal' })
+  const [extensionForm, setExtensionForm] = useState({ delivery_item_id: '', additional_days: 7, reason: '' })
   const [assignForm, setAssignForm] = useState({ machine_id: '' })
   const [saving, setSaving] = useState(false)
 
@@ -45,7 +44,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       const { data: custData } = await supabase.from('customers').select('id, company_name')
       setCustomers(custData || [])
 
-      // Projects = proposals with CONVERTED status
       let query = supabase.from('proposals').select('*')
         .eq('status', 'CONVERTED')
         .order('created_at', { ascending: false })
@@ -55,16 +53,12 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       const { data: projectsData } = await query
       setProjects(projectsData || [])
 
-      // Delivery items linked via proposal_id
       let diQuery = supabase.from('delivery_items').select('*').order('item_index')
       if (isCustomer && user?.company_id) {
         diQuery = diQuery.eq('company_id', user.company_id)
       }
       const { data: deliveryData } = await diQuery
       setDeliveryItems(deliveryData || [])
-
-      const { data: serviceData } = await supabase.from('service_requests').select('*').order('created_at', { ascending: false })
-      setServiceRequests(serviceData || [])
 
       if (isAdmin) {
         const { data: fleetData } = await supabase
@@ -83,7 +77,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
   const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
   const getProjectItems = (proposalId) => deliveryItems.filter(d => d.proposal_id === proposalId)
-  const getProjectServices = (proposalId) => serviceRequests.filter(s => s.proposal_id === proposalId)
 
   const getDaysRunning = (item) => {
     if (!item.delivery_completed_at) return null
@@ -99,10 +92,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     const items = getProjectItems(project.id)
     const allReturned = items.length > 0 && items.every(i => i.return_status === 'RETURNED')
     const allDelivered = items.length > 0 && items.every(i => i.delivery_status === 'DELIVERED')
-    const hasExpired = items.some(i => {
-      if (!i.estimated_end) return false
-      return new Date(i.estimated_end) < new Date()
-    })
+    const hasExpired = items.some(i => i.estimated_end && new Date(i.estimated_end) < new Date())
     
     if (allReturned) return { label: 'Tamamlandı', color: 'bg-gray-100 text-gray-700', border: '#9ca3af' }
     if (hasExpired) return { label: 'Süre Doldu', color: 'bg-red-100 text-red-700', border: '#ef4444' }
@@ -139,26 +129,28 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   }
 
   // ─── Service Request ───
-  const openServiceModal = (project, machine = null) => {
+  const openServiceModal = (project) => {
     setSelectedProject(project)
-    setSelectedItem(machine)
-    setServiceForm({ description: '', type: 'breakdown', priority: 'normal' })
+    const items = getProjectItems(project.id)
+    setServiceForm({ delivery_item_id: items.length === 1 ? items[0].id : '', description: '', type: 'breakdown', priority: 'normal' })
     setShowServiceModal(true)
   }
 
   const handleCreateService = async () => {
+    if (!serviceForm.delivery_item_id) { showToast('Makine seçin', 'error'); return }
     if (!serviceForm.description) { showToast('Açıklama zorunlu', 'error'); return }
     setSaving(true)
     try {
       const typeLabels = { breakdown: 'Arıza', maintenance: 'Bakım', inspection: 'Kontrol', scheduled: 'Planlı Bakım' }
-      const machineInfo = selectedItem ? ` - ${selectedItem.machine_type}` : ''
-      const title = `${typeLabels[serviceForm.type] || 'Talep'}${machineInfo} - ${selectedProject.proposal_number}`
+      const selectedDI = deliveryItems.find(d => d.id === serviceForm.delivery_item_id)
+      const title = `${typeLabels[serviceForm.type] || 'Talep'} - ${selectedDI?.machine_type || ''} - ${selectedProject.proposal_number}`
       
       await supabase.from('service_requests').insert({
         title,
         company_id: selectedProject.company_id,
         proposal_id: selectedProject.id,
-        fleet_id: selectedItem?.assigned_machine_id || null,
+        delivery_item_id: serviceForm.delivery_item_id,
+        fleet_id: selectedDI?.assigned_machine_id || null,
         type: serviceForm.type,
         priority: serviceForm.priority,
         description: serviceForm.description,
@@ -177,17 +169,22 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   // ─── Extension Request ───
   const openExtensionModal = (project) => {
     setSelectedProject(project)
-    setExtensionForm({ additional_days: 7, reason: '' })
+    const items = getProjectItems(project.id)
+    setExtensionForm({ delivery_item_id: items.length === 1 ? items[0].id : '', additional_days: 7, reason: '' })
     setShowExtensionModal(true)
   }
 
   const handleCreateExtension = async () => {
+    if (!extensionForm.delivery_item_id) { showToast('Makine seçin', 'error'); return }
     if (!extensionForm.reason) { showToast('Sebep zorunlu', 'error'); return }
     setSaving(true)
     try {
+      const selectedDI = deliveryItems.find(d => d.id === extensionForm.delivery_item_id)
       await supabase.from('extensions').insert({
         proposal_id: selectedProject.id,
         company_id: selectedProject.company_id,
+        delivery_item_id: extensionForm.delivery_item_id,
+        machine_type: selectedDI?.machine_type || '',
         additional_days: extensionForm.additional_days,
         reason: extensionForm.reason,
         status: 'PENDING'
@@ -224,7 +221,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
       await supabase.from('fleet').update({ status: 'reserved' }).eq('id', assignForm.machine_id)
 
-      showToast('Makine atandı - Teslimatlar sayfasından teslimat planlanabilir', 'success')
+      showToast('Makine atandı', 'success')
       setShowAssignModal(false)
       loadData()
     } catch (err) {
@@ -247,6 +244,14 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     }
     return true
   })
+
+  // Helper: machine select options for a project
+  const getMachineOptions = (project) => {
+    return getProjectItems(project.id).map(item => ({
+      id: item.id,
+      label: `${item.machine_type}${item.assigned_machine_serial ? ` (SN: ${item.assigned_machine_serial})` : ''}`
+    }))
+  }
 
   if (loading) return <div className="p-6"><SkeletonCards count={4} /></div>
 
@@ -277,7 +282,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
           {filteredProjects.map(project => {
             const status = getStatusInfo(project)
             const items = getProjectItems(project.id)
-            const services = getProjectServices(project.id)
             const isExpanded = expandedId === project.id
             
             const deliveredCount = items.filter(i => i.delivery_status === 'DELIVERED').length
@@ -325,6 +329,22 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
                 {isExpanded && (
                   <div className="border-t bg-gray-50 p-4 space-y-6">
+
+                    {/* ── İmzalı Sözleşme PDF ── */}
+                    {project.signed_pdf_url && (
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <FileSignature className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="text-sm font-medium text-blue-800 flex-1">İmzalı Sözleşme</span>
+                        <button
+                          onClick={() => window.open(fixStorageUrl(project.signed_pdf_url), '_blank')}
+                          className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1"
+                        >
+                          <Download className="w-3 h-3" />İndir / Görüntüle
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ── Makine Kalemleri ── */}
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><ClipboardList className="w-5 h-5" />Makine Kalemleri ({items.length})</h4>
                       {items.length === 0 ? (
@@ -370,6 +390,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                       )}
                                     </div>
 
+                                    {/* Days Running / Remaining */}
                                     {item.delivery_status === 'DELIVERED' && item.return_status !== 'RETURNED' && (
                                       <div className="flex gap-3 mt-2 flex-wrap">
                                         {daysRunning !== null && (
@@ -385,42 +406,27 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                       </div>
                                     )}
 
-                                    {isCustomer && (
-                                      <div className="flex gap-2 mt-2 flex-wrap">
-                                        {item.delivery_signature_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
-                                            <FileText className="w-3 h-3" />Teslimat Formu
-                                          </button>
-                                        )}
-                                        {item.return_signature_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
-                                            <FileText className="w-3 h-3" />İade Formu
-                                          </button>
-                                        )}
-                                        {item.delivery_pdf_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 flex items-center gap-1">
-                                            <Download className="w-3 h-3" />Teslimat PDF
-                                          </button>
-                                        )}
-                                        {item.return_pdf_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 flex items-center gap-1">
-                                            <Download className="w-3 h-3" />İade PDF
-                                          </button>
-                                        )}
-                                      </div>
-                                    )}
+                                    {/* Teslimat / İade Form PDF'leri - HEM MÜŞTERİ HEM ADMİN */}
+                                    <div className="flex gap-2 mt-2 flex-wrap">
+                                      {item.delivery_pdf_url && (
+                                        <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
+                                          <FileText className="w-3 h-3" />Teslimat Formu
+                                        </button>
+                                      )}
+                                      {item.return_pdf_url && (
+                                        <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_pdf_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
+                                          <FileText className="w-3 h-3" />İade Formu
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
+                                  {/* Aksiyonlar */}
                                   <div className="flex flex-wrap gap-2 flex-shrink-0">
                                     {isAdmin && item.delivery_status === 'UNASSIGNED' && (
                                       <Button size="sm" variant="primary" icon={Package} onClick={(e) => { e.stopPropagation(); openAssignModal(project, item) }}>
                                         Makine Ata
                                       </Button>
-                                    )}
-                                    {item.delivery_status === 'DELIVERED' && item.return_status !== 'RETURNED' && (
-                                      <button onClick={(e) => { e.stopPropagation(); openServiceModal(project, item) }} className="text-xs px-2 py-1.5 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 flex items-center gap-1">
-                                        <Wrench className="w-3 h-3" />Servis Talebi
-                                      </button>
                                     )}
                                   </div>
                                 </div>
@@ -431,37 +437,11 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       )}
                     </div>
 
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-gray-900 flex items-center gap-2"><Wrench className="w-5 h-5" />Servis Talepleri</h4>
-                        <Button size="sm" variant="outline" icon={Plus} onClick={() => openServiceModal(project)}>Yeni Talep</Button>
-                      </div>
-                      {services.length === 0 ? (
-                        <p className="text-sm text-gray-500 bg-white p-4 rounded-lg border">Henüz servis talebi yok.</p>
-                      ) : (
-                        <div className="bg-white rounded-lg border divide-y">
-                          {services.map(service => (
-                            <div key={service.id} className="p-3 flex items-center justify-between">
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm">{service.title}</p>
-                                <p className="text-xs text-gray-500">{new Date(service.created_at).toLocaleDateString('tr-TR')}</p>
-                              </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                service.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                                service.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {service.status === 'completed' ? 'Tamamlandı' : service.status === 'in_progress' ? 'İşlemde' : 'Bekliyor'}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
+                    {/* ── Alt Butonlar ── */}
                     <div className="flex flex-wrap gap-2 pt-2 border-t">
                       <Button size="sm" variant="outline" icon={Clock} onClick={() => openExtensionModal(project)}>Süre Uzatma Talebi</Button>
-                      {isCustomer && <Button size="sm" variant="outline" icon={Plus} onClick={() => setActivePage && setActivePage('request')}>Yeni Makine Talebi</Button>}
                       <Button size="sm" variant="outline" icon={Wrench} onClick={() => openServiceModal(project)}>Servis Talebi</Button>
+                      {isCustomer && <Button size="sm" variant="outline" icon={Plus} onClick={() => setActivePage && setActivePage('request')}>Yeni Makine Talebi</Button>}
                     </div>
                   </div>
                 )}
@@ -478,9 +458,22 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="font-semibold">{selectedProject.proposal_number}</p>
               {isAdmin && <p className="text-sm text-gray-500">{getCustomerName(selectedProject.company_id)}</p>}
-              {selectedItem && <p className="text-sm text-blue-600 mt-1">{selectedItem.machine_type} {selectedItem.assigned_machine_serial ? `- ${selectedItem.assigned_machine_serial}` : ''}</p>}
             </div>
           )}
+          {/* Makine Seçimi */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Makine *</label>
+            <select 
+              value={serviceForm.delivery_item_id} 
+              onChange={(e) => setServiceForm(p => ({ ...p, delivery_item_id: e.target.value }))} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="">Makine seçin...</option>
+              {selectedProject && getMachineOptions(selectedProject).map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Talep Tipi</label>
@@ -515,8 +508,23 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
           {selectedProject && (
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="font-semibold">{selectedProject.proposal_number}</p>
+              {isAdmin && <p className="text-sm text-gray-500">{getCustomerName(selectedProject.company_id)}</p>}
             </div>
           )}
+          {/* Makine Seçimi */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Makine *</label>
+            <select 
+              value={extensionForm.delivery_item_id} 
+              onChange={(e) => setExtensionForm(p => ({ ...p, delivery_item_id: e.target.value }))} 
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="">Makine seçin...</option>
+              {selectedProject && getMachineOptions(selectedProject).map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
           <Input label="Ek Gün *" type="number" min={1} value={extensionForm.additional_days} onChange={(e) => setExtensionForm(p => ({ ...p, additional_days: parseInt(e.target.value) || 1 }))} />
           <Textarea label="Sebep *" value={extensionForm.reason} onChange={(e) => setExtensionForm(p => ({ ...p, reason: e.target.value }))} placeholder="Süre uzatma sebebinizi yazın..." rows={3} />
           <div className="flex gap-3">
