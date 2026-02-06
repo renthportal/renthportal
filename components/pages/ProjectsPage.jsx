@@ -27,7 +27,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [expandedId, setExpandedId] = useState(null)
   
-  // Modals
   const [showServiceModal, setShowServiceModal] = useState(false)
   const [showExtensionModal, setShowExtensionModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
@@ -46,16 +45,17 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       const { data: custData } = await supabase.from('customers').select('id, company_name')
       setCustomers(custData || [])
 
-      let query = supabase.from('rentals').select('*').order('created_at', { ascending: false })
+      // Projects = proposals with CONVERTED status
+      let query = supabase.from('proposals').select('*')
+        .eq('status', 'CONVERTED')
+        .order('created_at', { ascending: false })
       if (isCustomer && user?.company_id) {
         query = query.eq('company_id', user.company_id)
       }
-      if (isCustomer && user?.customer_id) {
-        query = query.eq('customer_id', user.customer_id)
-      }
-      const { data: rentalsData } = await query
-      setProjects(rentalsData || [])
+      const { data: projectsData } = await query
+      setProjects(projectsData || [])
 
+      // Delivery items linked via proposal_id
       let diQuery = supabase.from('delivery_items').select('*').order('item_index')
       if (isCustomer && user?.company_id) {
         diQuery = diQuery.eq('company_id', user.company_id)
@@ -82,12 +82,12 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   useEffect(() => { loadData() }, [loadData])
 
   const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
-  const getProjectItems = (rentalId) => deliveryItems.filter(d => d.rental_id === rentalId)
-  const getProjectServices = (rentalId) => serviceRequests.filter(s => s.rental_id === rentalId)
+  const getProjectItems = (proposalId) => deliveryItems.filter(d => d.proposal_id === proposalId)
+  const getProjectServices = (proposalId) => serviceRequests.filter(s => s.proposal_id === proposalId)
 
   const getDaysRunning = (item) => {
-    if (!item.delivered_at) return null
-    return Math.max(0, Math.ceil((new Date() - new Date(item.delivered_at)) / (1000 * 60 * 60 * 24)))
+    if (!item.delivery_completed_at) return null
+    return Math.max(0, Math.ceil((new Date() - new Date(item.delivery_completed_at)) / (1000 * 60 * 60 * 24)))
   }
 
   const getDaysRemaining = (item) => {
@@ -95,23 +95,19 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     return Math.ceil((new Date(item.estimated_end) - new Date()) / (1000 * 60 * 60 * 24))
   }
 
-  const getRemainingDays = (endDate) => {
-    if (!endDate) return null
-    return Math.ceil((new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24))
-  }
-
-  const getProgress = (startDate, endDate) => {
-    if (!startDate || !endDate) return 0
-    const start = new Date(startDate), end = new Date(endDate), today = new Date()
-    return Math.min(Math.max(((today - start) / (end - start)) * 100, 0), 100)
-  }
-
-  const getStatusInfo = (status, remaining) => {
-    if (status === 'completed') return { label: 'Tamamlandı', color: 'bg-gray-100 text-gray-700', border: '#9ca3af' }
-    if (status === 'cancelled') return { label: 'İptal', color: 'bg-red-100 text-red-700', border: '#ef4444' }
-    if (remaining !== null && remaining <= 0) return { label: 'Süre Doldu', color: 'bg-red-100 text-red-700', border: '#ef4444' }
-    if (remaining !== null && remaining <= 7) return { label: 'Aktif', color: 'bg-orange-100 text-orange-700', border: '#f97316' }
-    return { label: 'Aktif', color: 'bg-emerald-100 text-emerald-700', border: '#10b981' }
+  const getStatusInfo = (project) => {
+    const items = getProjectItems(project.id)
+    const allReturned = items.length > 0 && items.every(i => i.return_status === 'RETURNED')
+    const allDelivered = items.length > 0 && items.every(i => i.delivery_status === 'DELIVERED')
+    const hasExpired = items.some(i => {
+      if (!i.estimated_end) return false
+      return new Date(i.estimated_end) < new Date()
+    })
+    
+    if (allReturned) return { label: 'Tamamlandı', color: 'bg-gray-100 text-gray-700', border: '#9ca3af' }
+    if (hasExpired) return { label: 'Süre Doldu', color: 'bg-red-100 text-red-700', border: '#ef4444' }
+    if (allDelivered) return { label: 'Aktif', color: 'bg-emerald-100 text-emerald-700', border: '#10b981' }
+    return { label: 'Hazırlanıyor', color: 'bg-blue-100 text-blue-700', border: '#3b82f6' }
   }
 
   const getDeliveryBadge = (status) => {
@@ -156,13 +152,12 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     try {
       const typeLabels = { breakdown: 'Arıza', maintenance: 'Bakım', inspection: 'Kontrol', scheduled: 'Planlı Bakım' }
       const machineInfo = selectedItem ? ` - ${selectedItem.machine_type}` : ''
-      const title = `${typeLabels[serviceForm.type] || 'Talep'}${machineInfo} - ${selectedProject.rental_no}`
+      const title = `${typeLabels[serviceForm.type] || 'Talep'}${machineInfo} - ${selectedProject.proposal_number}`
       
       await supabase.from('service_requests').insert({
         title,
-        customer_id: selectedProject.customer_id,
         company_id: selectedProject.company_id,
-        rental_id: selectedProject.id,
+        proposal_id: selectedProject.id,
         fleet_id: selectedItem?.assigned_machine_id || null,
         type: serviceForm.type,
         priority: serviceForm.priority,
@@ -191,9 +186,8 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
     setSaving(true)
     try {
       await supabase.from('extensions').insert({
-        rental_id: selectedProject.id,
+        proposal_id: selectedProject.id,
         company_id: selectedProject.company_id,
-        customer_id: selectedProject.customer_id,
         additional_days: extensionForm.additional_days,
         reason: extensionForm.reason,
         status: 'PENDING'
@@ -230,7 +224,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
       await supabase.from('fleet').update({ status: 'reserved' }).eq('id', assignForm.machine_id)
 
-      showToast('Makine atandı - Teslimatlar sayfasında teslimat planlanabilir', 'success')
+      showToast('Makine atandı - Teslimatlar sayfasından teslimat planlanabilir', 'success')
       setShowAssignModal(false)
       loadData()
     } catch (err) {
@@ -241,10 +235,15 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
   // ─── Filters ───
   const filteredProjects = projects.filter(p => {
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false
+    if (statusFilter !== 'all') {
+      const si = getStatusInfo(p)
+      if (statusFilter === 'active' && si.label !== 'Aktif' && si.label !== 'Hazırlanıyor') return false
+      if (statusFilter === 'completed' && si.label !== 'Tamamlandı') return false
+      if (statusFilter === 'expired' && si.label !== 'Süre Doldu') return false
+    }
     if (search) {
       const s = search.toLowerCase()
-      return p.rental_no?.toLowerCase().includes(s) || getCustomerName(p.customer_id).toLowerCase().includes(s)
+      return p.proposal_number?.toLowerCase().includes(s) || getCustomerName(p.company_id).toLowerCase().includes(s)
     }
     return true
   })
@@ -253,7 +252,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      {/* Header */}
       <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{isCustomer ? 'Projelerim' : 'Proje Takip'}</h1>
@@ -262,14 +260,13 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
         <Button variant="outline" icon={RefreshCw} onClick={loadData}>Yenile</Button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col lg:flex-row gap-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Proje no, müşteri ara..." className="flex-1 max-w-md" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Teklif no, müşteri ara..." className="flex-1 max-w-md" />
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg">
           <option value="all">Tüm Durumlar</option>
           <option value="active">Aktif</option>
           <option value="completed">Tamamlandı</option>
-          <option value="cancelled">İptal</option>
+          <option value="expired">Süre Doldu</option>
         </select>
       </div>
 
@@ -278,59 +275,56 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
       ) : (
         <div className="space-y-4">
           {filteredProjects.map(project => {
-            const remaining = getRemainingDays(project.end_date)
-            const progress = getProgress(project.start_date, project.end_date)
-            const status = getStatusInfo(project.status, remaining)
+            const status = getStatusInfo(project)
             const items = getProjectItems(project.id)
             const services = getProjectServices(project.id)
             const isExpanded = expandedId === project.id
             
             const deliveredCount = items.filter(i => i.delivery_status === 'DELIVERED').length
             const returnedCount = items.filter(i => i.return_status === 'RETURNED').length
-            const totalMachines = items.length || project.total_machines || 0
+            const totalMachines = items.length
+
+            const startDates = items.filter(i => i.estimated_start).map(i => new Date(i.estimated_start))
+            const endDates = items.filter(i => i.estimated_end).map(i => new Date(i.estimated_end))
+            const earliestStart = startDates.length > 0 ? new Date(Math.min(...startDates)) : null
+            const latestEnd = endDates.length > 0 ? new Date(Math.max(...endDates)) : null
+            const daysToEnd = latestEnd ? Math.ceil((latestEnd - new Date()) / (1000 * 60 * 60 * 24)) : null
 
             return (
               <Card key={project.id} className="overflow-hidden" style={{ borderLeft: `4px solid ${status.border}` }}>
-                {/* Header */}
                 <div className="p-4 cursor-pointer hover:bg-gray-50" onClick={() => setExpandedId(isExpanded ? null : project.id)}>
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <h3 className="text-lg font-bold text-gray-900">{project.rental_no}</h3>
+                        <h3 className="text-lg font-bold text-gray-900">{project.proposal_number}</h3>
                         <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>{status.label}</span>
-                        {remaining !== null && remaining > 0 && remaining <= 7 && (
+                        {daysToEnd !== null && daysToEnd > 0 && daysToEnd <= 7 && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 flex items-center gap-1">
-                            <AlertTriangle className="w-3 h-3" />{remaining} gün kaldı
+                            <AlertTriangle className="w-3 h-3" />{daysToEnd} gün kaldı
                           </span>
                         )}
-                        {remaining !== null && remaining <= 0 && project.status === 'active' && (
+                        {daysToEnd !== null && daysToEnd <= 0 && status.label !== 'Tamamlandı' && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">Süre doldu!</span>
                         )}
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                        {isAdmin && <span className="flex items-center gap-1"><Building className="w-4 h-4" />{getCustomerName(project.customer_id)}</span>}
-                        <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{project.start_date ? new Date(project.start_date).toLocaleDateString('tr-TR') : '-'}</span>
-                        <span className="flex items-center gap-1"><ArrowRight className="w-4 h-4" />{project.end_date ? new Date(project.end_date).toLocaleDateString('tr-TR') : '-'}</span>
+                        {isAdmin && <span className="flex items-center gap-1"><Building className="w-4 h-4" />{getCustomerName(project.company_id)}</span>}
+                        {earliestStart && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" />{earliestStart.toLocaleDateString('tr-TR')}</span>}
+                        {latestEnd && <span className="flex items-center gap-1"><ArrowRight className="w-4 h-4" />{latestEnd.toLocaleDateString('tr-TR')}</span>}
                         <span className="flex items-center gap-1"><Package className="w-4 h-4" />{deliveredCount}/{totalMachines} teslim</span>
                         {returnedCount > 0 && <span className="flex items-center gap-1 text-orange-600"><RotateCcw className="w-4 h-4" />{returnedCount} iade</span>}
+                        {!isCustomer && project.total_amount && (
+                          <span className="font-medium text-gray-900">₺{Number(project.total_amount).toLocaleString('tr-TR')}</span>
+                        )}
                       </div>
-
-                      {project.start_date && project.end_date && project.status === 'active' && (
-                        <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
-                          <div className={`h-full rounded-full transition-all ${remaining <= 0 ? 'bg-red-500' : remaining <= 7 ? 'bg-orange-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }} />
-                        </div>
-                      )}
                     </div>
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                   </div>
                 </div>
 
-                {/* Expanded Content */}
                 {isExpanded && (
                   <div className="border-t bg-gray-50 p-4 space-y-6">
-
-                    {/* ── Makine Kalemleri ── */}
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><ClipboardList className="w-5 h-5" />Makine Kalemleri ({items.length})</h4>
                       {items.length === 0 ? (
@@ -364,19 +358,18 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                       {item.assigned_machine_serial && isAdmin && (
                                         <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs">SN: {item.assigned_machine_serial}</span>
                                       )}
-                                      {item.delivered_at && (
+                                      {item.delivery_completed_at && (
                                         <span className="text-emerald-600 text-xs flex items-center gap-1">
-                                          <CheckCircle className="w-3 h-3" />Teslim: {new Date(item.delivered_at).toLocaleDateString('tr-TR')}
+                                          <CheckCircle className="w-3 h-3" />Teslim: {new Date(item.delivery_completed_at).toLocaleDateString('tr-TR')}
                                         </span>
                                       )}
-                                      {item.returned_at && (
+                                      {item.return_completed_at && (
                                         <span className="text-orange-600 text-xs flex items-center gap-1">
-                                          <RotateCcw className="w-3 h-3" />İade: {new Date(item.returned_at).toLocaleDateString('tr-TR')}
+                                          <RotateCcw className="w-3 h-3" />İade: {new Date(item.return_completed_at).toLocaleDateString('tr-TR')}
                                         </span>
                                       )}
                                     </div>
 
-                                    {/* Days Running / Remaining */}
                                     {item.delivery_status === 'DELIVERED' && item.return_status !== 'RETURNED' && (
                                       <div className="flex gap-3 mt-2 flex-wrap">
                                         {daysRunning !== null && (
@@ -392,16 +385,15 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                       </div>
                                     )}
 
-                                    {/* Customer: View form PDFs */}
                                     {isCustomer && (
                                       <div className="flex gap-2 mt-2 flex-wrap">
-                                        {item.delivery_form_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_form_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
+                                        {item.delivery_signature_url && (
+                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.delivery_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 flex items-center gap-1">
                                             <FileText className="w-3 h-3" />Teslimat Formu
                                           </button>
                                         )}
-                                        {item.return_form_url && (
-                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_form_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
+                                        {item.return_signature_url && (
+                                          <button onClick={(e) => { e.stopPropagation(); window.open(fixStorageUrl(item.return_signature_url), '_blank') }} className="text-xs px-2 py-1 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 flex items-center gap-1">
                                             <FileText className="w-3 h-3" />İade Formu
                                           </button>
                                         )}
@@ -419,7 +411,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                                     )}
                                   </div>
 
-                                  {/* Aksiyonlar */}
                                   <div className="flex flex-wrap gap-2 flex-shrink-0">
                                     {isAdmin && item.delivery_status === 'UNASSIGNED' && (
                                       <Button size="sm" variant="primary" icon={Package} onClick={(e) => { e.stopPropagation(); openAssignModal(project, item) }}>
@@ -440,7 +431,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       )}
                     </div>
 
-                    {/* ── Servis Talepleri ── */}
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-semibold text-gray-900 flex items-center gap-2"><Wrench className="w-5 h-5" />Servis Talepleri</h4>
@@ -468,7 +458,6 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                       )}
                     </div>
 
-                    {/* ── Eylemler ── */}
                     <div className="flex flex-wrap gap-2 pt-2 border-t">
                       <Button size="sm" variant="outline" icon={Clock} onClick={() => openExtensionModal(project)}>Süre Uzatma Talebi</Button>
                       {isCustomer && <Button size="sm" variant="outline" icon={Plus} onClick={() => setActivePage && setActivePage('request')}>Yeni Makine Talebi</Button>}
@@ -487,8 +476,8 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
         <div className="p-6 space-y-4">
           {selectedProject && (
             <div className="p-3 bg-gray-50 rounded-lg">
-              <p className="font-semibold">{selectedProject.rental_no}</p>
-              {isAdmin && <p className="text-sm text-gray-500">{getCustomerName(selectedProject.customer_id)}</p>}
+              <p className="font-semibold">{selectedProject.proposal_number}</p>
+              {isAdmin && <p className="text-sm text-gray-500">{getCustomerName(selectedProject.company_id)}</p>}
               {selectedItem && <p className="text-sm text-blue-600 mt-1">{selectedItem.machine_type} {selectedItem.assigned_machine_serial ? `- ${selectedItem.assigned_machine_serial}` : ''}</p>}
             </div>
           )}
@@ -525,8 +514,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
         <div className="p-6 space-y-4">
           {selectedProject && (
             <div className="p-3 bg-gray-50 rounded-lg">
-              <p className="font-semibold">{selectedProject.rental_no}</p>
-              <p className="text-sm text-gray-500">Bitiş: {selectedProject.end_date ? new Date(selectedProject.end_date).toLocaleDateString('tr-TR') : '-'}</p>
+              <p className="font-semibold">{selectedProject.proposal_number}</p>
             </div>
           )}
           <Input label="Ek Gün *" type="number" min={1} value={extensionForm.additional_days} onChange={(e) => setExtensionForm(p => ({ ...p, additional_days: parseInt(e.target.value) || 1 }))} />
