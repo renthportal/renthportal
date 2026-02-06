@@ -1,0 +1,11 @@
+{
+  "name": "RenthPortal",
+  "short_name": "Renth",
+  "description": "Kiralama Yönetim Sistemi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#C41E3A",
+  "orientation": "any",
+  "lang": "tr"
+}
