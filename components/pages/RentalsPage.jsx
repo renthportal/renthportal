@@ -62,7 +62,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: custData } = await supabase.from('customers').select('id, company_name')
+      const { data: custData } = await supabase.from('companies').select('id, name')
       setCustomers(custData || [])
 
       let diQuery = supabase.from('delivery_items').select('*').order('item_index')
@@ -91,7 +91,7 @@ const RentalsPage = ({ user, showToast, isAdmin }) => {
   useEffect(() => { loadData() }, [loadData])
 
   // ─── Helpers ───
-  const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
+  const getCustomerName = (cid) => customers.find(c => c.id === cid)?.name || '-'
   const getSalesRepName = (uid) => allUsers.find(u => u.id === uid)?.full_name || '-'
   const getProposal = (pid) => proposals.find(p => p.id === pid)
   const getAvailableFleet = () => fleet.filter(f => ['available', 'müsait'].includes((f.status || '').toLowerCase()))
