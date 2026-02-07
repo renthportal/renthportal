@@ -20,6 +20,7 @@ export default function Sidebar({ user, activePage, setActivePage, onLogout, pen
     { id: 'projects', label: 'Proje Takip', icon: ClipboardCheck },
     { id: 'rentals', label: 'Teslimatlarım', icon: Truck },
     { id: 'services', label: 'Servis Talepleri', icon: Wrench, badge: pendingCounts?.services },
+    { id: 'invoice-plans', label: 'Fatura Planı', icon: Calculator },
     { id: 'finance', label: 'Finans', icon: Wallet },
     { id: 'messages', label: 'Mesajlar', icon: MessageSquare, badge: pendingCounts?.messages },
     { id: 'surveys', label: 'Değerlendirmeler', icon: Star },
