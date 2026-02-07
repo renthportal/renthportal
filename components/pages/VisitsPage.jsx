@@ -282,7 +282,7 @@ const VisitsPage = ({ user, showToast, isAdmin, setActivePage }) => {
                 label="Müşteri Adı *"
                 value={form.company_id}
                 onChange={val => handleCustomerChange(val)}
-                options={customers.map(c => ({ value: c.id, label: c.name }))}
+                options={customers.map(c => ({ value: c.id, label: c.name || 'İsimsiz Firma' }))}
                 placeholder="Müşteri ara ve seç..."
                 searchPlaceholder="Firma adı yazın..."
               />
