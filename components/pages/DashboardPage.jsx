@@ -38,26 +38,27 @@ const DashboardPage = ({ user, isAdmin, isStaff, setActivePage }) => {
   const [stats, setStats] = useState({})
   const [recentProposals, setRecentProposals] = useState([])
   const [deliveryStats, setDeliveryStats] = useState(null)
+  const [missingPlanCount, setMissingPlanCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const loadData = async () => {
     setLoading(true)
     if (isStaff) {
-      const [companies, machines, proposals, services, rentals] = await Promise.all([
+      const [companies, machines, proposals, services, activeDeliveries] = await Promise.all([
         supabase.from('companies').select('*', { count: 'exact', head: true }),
         supabase.from('machines').select('*'),
         supabase.from('proposals').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
         supabase.from('service_requests').select('*', { count: 'exact', head: true }).in('status', ['OPEN', 'ASSIGNED', 'IN_PROGRESS']),
-        supabase.from('rentals').select('*', { count: 'exact', head: true }).in('status', ['ACTIVE', 'DELIVERED']),
+        supabase.from('delivery_items').select('*', { count: 'exact', head: true }).eq('delivery_status', 'DELIVERED').or('return_status.is.null,return_status.neq.RETURNED'),
       ])
-      setStats({ companies: companies.count || 0, machines: machines.data?.length || 0, availableMachines: machines.data?.filter(m => m.status === 'AVAILABLE').length || 0, pendingProposals: proposals.count || 0, openServices: services.count || 0, activeRentals: rentals.count || 0 })
+      setStats({ companies: companies.count || 0, machines: machines.data?.length || 0, availableMachines: machines.data?.filter(m => m.status === 'AVAILABLE').length || 0, pendingProposals: proposals.count || 0, openServices: services.count || 0, activeRentals: activeDeliveries.count || 0 })
     } else {
-      const [proposals, services, rentals] = await Promise.all([
+      const [proposals, services, activeDeliveries] = await Promise.all([
         supabase.from('proposals').select('*', { count: 'exact', head: true }).eq('company_id', user.company_id).in('status', ['PENDING', 'QUOTED']),
         supabase.from('service_requests').select('*', { count: 'exact', head: true }).eq('company_id', user.company_id).in('status', ['OPEN', 'ASSIGNED', 'IN_PROGRESS']),
-        supabase.from('rentals').select('*', { count: 'exact', head: true }).eq('company_id', user.company_id).in('status', ['ACTIVE', 'DELIVERED']),
+        supabase.from('delivery_items').select('*', { count: 'exact', head: true }).eq('company_id', user.company_id).eq('delivery_status', 'DELIVERED').or('return_status.is.null,return_status.neq.RETURNED'),
       ])
-      setStats({ pendingProposals: proposals.count || 0, openServices: services.count || 0, activeRentals: rentals.count || 0 })
+      setStats({ pendingProposals: proposals.count || 0, openServices: services.count || 0, activeRentals: activeDeliveries.count || 0 })
     }
     // Delivery items stats
     let diQuery = supabase.from('delivery_items').select('delivery_status, return_status, company_id')
@@ -73,6 +74,18 @@ const DashboardPage = ({ user, isAdmin, isStaff, setActivePage }) => {
         returnTransit: diData.filter(d => d.return_status === 'IN_TRANSIT').length,
         returned: diData.filter(d => d.return_status === 'RETURNED').length,
       })
+    }
+    // Missing invoice plans check (staff only)
+    if (isStaff) {
+      const now = new Date()
+      const cmStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+      const { data: delivered } = await supabase.from('delivery_items').select('proposal_id').eq('delivery_status', 'DELIVERED').or('return_status.is.null,return_status.neq.RETURNED')
+      if (delivered?.length) {
+        const proposalIds = [...new Set(delivered.map(d => d.proposal_id))]
+        const { data: existingPlans } = await supabase.from('invoice_plans').select('proposal_id').eq('period_start', cmStart).neq('status', 'CANCELLED').in('proposal_id', proposalIds)
+        const coveredIds = new Set((existingPlans || []).map(p => p.proposal_id))
+        setMissingPlanCount(proposalIds.filter(id => !coveredIds.has(id)).length)
+      }
     }
     // Recent proposals
     let rpQuery = supabase.from('proposals').select('*, company:companies(name)').order('created_at', { ascending: false }).limit(5)
@@ -211,6 +224,12 @@ const DashboardPage = ({ user, isAdmin, isStaff, setActivePage }) => {
             <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl cursor-pointer hover:bg-amber-100 transition-colors" onClick={() => setActivePage && setActivePage('proposals')}>
               <div className="mt-0.5"><AlertCircle className="w-5 h-5 text-amber-500" /></div>
               <div><p className="text-sm font-medium text-amber-900">{isStaff ? `${stats.pendingProposals} yeni teklif talebi bekliyor` : `${stats.pendingProposals} teklifiniz yanıt bekliyor`}</p><p className="text-xs text-amber-600 mt-0.5">Teklifler sayfasına git →</p></div>
+            </div>
+          )}
+          {isStaff && missingPlanCount > 0 && (
+            <div className="flex items-start gap-3 p-3 bg-red-50 rounded-xl cursor-pointer hover:bg-red-100 transition-colors" onClick={() => setActivePage && setActivePage('invoice-plans')}>
+              <div className="mt-0.5"><AlertTriangle className="w-5 h-5 text-red-500" /></div>
+              <div><p className="text-sm font-medium text-red-900">{missingPlanCount} proje için bu ay fatura planı eksik!</p><p className="text-xs text-red-600 mt-0.5">Fatura planı sayfasına git →</p></div>
             </div>
           )}
           {stats.activeRentals > 0 && (
