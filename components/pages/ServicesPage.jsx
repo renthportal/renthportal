@@ -30,7 +30,7 @@ const ServicesPage = ({ user, showToast }) => {
   const isCustomer = user?.role === 'CUSTOMER'
 
   const [form, setForm] = useState({
-    customer_id: '',
+    company_id: '',
     fleet_id: '',
     type: 'breakdown',
     priority: 'normal',
@@ -65,10 +65,9 @@ const ServicesPage = ({ user, showToast }) => {
       // Müşteriler (admin için)
       if (!isCustomer) {
         const { data: custs, error: custError } = await supabase
-          .from('customers')
-          .select('id, company_name')
-          .eq('is_active', true)
-          .order('company_name')
+          .from('companies')
+          .select('id, name')
+          .order('name')
         
         console.log('Customers loaded:', custs, custError)
         setCustomers(custs || [])
@@ -77,12 +76,12 @@ const ServicesPage = ({ user, showToast }) => {
       // Filo (makineler)
       let fleetQuery = supabase
         .from('fleet')
-        .select('id, serial_number, machine:machines(name), customer_id')
+        .select('id, serial_number, machine:machines(name), company_id')
         .order('serial_number')
       
       // Müşteri ise sadece kendi makinelerini veya müsait makineleri göster
-      if (isCustomer && user?.customer_id) {
-        fleetQuery = fleetQuery.or(`customer_id.eq.${user.customer_id},customer_id.is.null`)
+      if (isCustomer && user?.company_id) {
+        fleetQuery = fleetQuery.or(`company_id.eq.${user.company_id},company_id.is.null`)
       }
       
       const { data: fleetData, error: fleetError } = await fleetQuery
@@ -94,13 +93,13 @@ const ServicesPage = ({ user, showToast }) => {
         .from('service_requests')
         .select(`
           *,
-          customer:customers(id, company_name),
+          company:companies(id, name),
           fleet:fleet(id, serial_number, machine:machines(name))
         `)
         .order('created_at', { ascending: false })
 
-      if (isCustomer && user?.customer_id) {
-        query = query.eq('customer_id', user.customer_id)
+      if (isCustomer && user?.company_id) {
+        query = query.eq('company_id', user.company_id)
       }
 
       const { data, error: reqError } = await query
@@ -118,10 +117,10 @@ const ServicesPage = ({ user, showToast }) => {
   const getFilteredFleet = () => {
     if (isCustomer) {
       // Müşteri: sadece kendi makineleri
-      return fleet.filter(f => f.customer_id === user?.customer_id)
-    } else if (form.customer_id) {
+      return fleet.filter(f => f.company_id === user?.company_id)
+    } else if (form.company_id) {
       // Admin: seçili müşterinin makineleri
-      return fleet.filter(f => f.customer_id === form.customer_id)
+      return fleet.filter(f => f.company_id === form.company_id)
     }
     return fleet
   }
@@ -133,7 +132,7 @@ const ServicesPage = ({ user, showToast }) => {
       const s = search.toLowerCase()
       return r.title?.toLowerCase().includes(s) ||
              r.description?.toLowerCase().includes(s) ||
-             r.customer?.company_name?.toLowerCase().includes(s) ||
+             r.company?.name?.toLowerCase().includes(s) ||
              r.fleet?.serial_number?.toLowerCase().includes(s)
     }
     return true
@@ -142,7 +141,7 @@ const ServicesPage = ({ user, showToast }) => {
   const openAddModal = () => {
     setSelectedRequest(null)
     setForm({
-      customer_id: '',
+      company_id: '',
       fleet_id: '',
       type: 'breakdown',
       priority: 'normal',
@@ -162,13 +161,13 @@ const ServicesPage = ({ user, showToast }) => {
       return
     }
     
-    // Customer ID belirleme
-    let customerId
+    // Company ID belirleme
+    let companyId
     if (isCustomer) {
-      customerId = user?.customer_id
+      companyId = user?.company_id
     } else {
-      customerId = form.customer_id
-      if (!customerId) {
+      companyId = form.company_id
+      if (!companyId) {
         showToast('Firma seçimi zorunlu', 'error')
         return
       }
@@ -181,7 +180,7 @@ const ServicesPage = ({ user, showToast }) => {
 
       const payload = {
         title: title,
-        customer_id: customerId,
+        company_id: companyId,
         fleet_id: form.fleet_id || null,
         type: form.type,
         priority: form.priority,
@@ -308,10 +307,10 @@ const ServicesPage = ({ user, showToast }) => {
                       <span className={`text-xs font-medium ${priorityOpt?.color}`}>{priorityOpt?.label}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                      {request.customer && (
+                      {request.company && (
                         <span className="flex items-center gap-1">
                           <Building className="w-4 h-4" />
-                          {request.customer.company_name}
+                          {request.company.name}
                         </span>
                       )}
                       {request.fleet && (
@@ -347,13 +346,13 @@ const ServicesPage = ({ user, showToast }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Firma *</label>
               <select
-                value={form.customer_id}
-                onChange={(e) => setForm(prev => ({ ...prev, customer_id: e.target.value, fleet_id: '' }))}
+                value={form.company_id}
+                onChange={(e) => setForm(prev => ({ ...prev, company_id: e.target.value, fleet_id: '' }))}
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
               >
                 <option value="">Firma seçin</option>
                 {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
               {customers.length === 0 && (
@@ -439,7 +438,7 @@ const ServicesPage = ({ user, showToast }) => {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-gray-500">Firma</p>
-                <p className="font-medium">{selectedRequest.customer?.company_name || '-'}</p>
+                <p className="font-medium">{selectedRequest.company?.name || '-'}</p>
               </div>
               <div>
                 <p className="text-gray-500">Makine</p>
