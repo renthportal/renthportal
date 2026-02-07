@@ -95,7 +95,7 @@ const FleetPage = ({ showToast }) => {
     status: 'available',
     location_type: 'garage',
     garage: 'samandira',
-    customer_id: '',
+    company_id: '',
     customer_address: '',
     muayene_tarihi: '',
     sigorta_bitis: '',
@@ -131,9 +131,9 @@ const FleetPage = ({ showToast }) => {
       setMachines(machs || [])
 
       const { data: custs } = await supabase
-        .from('customers')
-        .select('id, company_name')
-        .order('company_name')
+        .from('companies')
+        .select('id, name')
+        .order('name')
       setCustomers(custs || [])
 
       const { data: fleetData } = await supabase
@@ -142,7 +142,7 @@ const FleetPage = ({ showToast }) => {
           *,
           category:categories(id, name),
           machine:machines(id, name),
-          customer:customers(id, company_name)
+          company:companies(id, name)
         `)
         .order('serial_number')
       setFleet(fleetData || [])
@@ -181,7 +181,7 @@ const FleetPage = ({ showToast }) => {
       const serial = turkishToLower(item.serial_number)
       const cat = turkishToLower(item.category?.name)
       const mach = turkishToLower(item.machine?.name)
-      const cust = turkishToLower(item.customer?.company_name)
+      const cust = turkishToLower(item.company?.name)
       return serial.includes(s) || cat.includes(s) || mach.includes(s) || cust.includes(s)
     }
     return true
@@ -269,7 +269,7 @@ const FleetPage = ({ showToast }) => {
       status: 'available',
       location_type: 'garage',
       garage: 'samandira',
-      customer_id: '',
+      company_id: '',
       customer_address: '',
       muayene_tarihi: '',
       sigorta_bitis: '',
@@ -287,7 +287,7 @@ const FleetPage = ({ showToast }) => {
       status: item.status || 'available',
       location_type: item.location_type || 'garage',
       garage: item.garage || 'samandira',
-      customer_id: item.customer_id || '',
+      company_id: item.company_id || '',
       customer_address: item.customer_address || '',
       muayene_tarihi: item.muayene_tarihi || '',
       sigorta_bitis: item.sigorta_bitis || '',
@@ -310,7 +310,7 @@ const FleetPage = ({ showToast }) => {
         status: form.status,
         location_type: form.status === 'rented' ? 'customer' : 'garage',
         garage: form.status !== 'rented' ? form.garage : null,
-        customer_id: form.status === 'rented' ? form.customer_id || null : null,
+        company_id: form.status === 'rented' ? form.company_id || null : null,
         customer_address: form.status === 'rented' ? form.customer_address : null,
         muayene_tarihi: form.muayene_tarihi || null,
         sigorta_bitis: form.sigorta_bitis || null,
@@ -488,9 +488,9 @@ const FleetPage = ({ showToast }) => {
       'SERİ NO': item.serial_number,
       'DURUM': STATUS_OPTIONS.find(s => s.value === item.status)?.label || '',
       'KONUM': item.location_type === 'customer' 
-        ? (item.customer?.company_name || '') + ' - ' + (item.customer_address || '')
+        ? (item.company?.name || '') + ' - ' + (item.customer_address || '')
         : GARAGE_OPTIONS.find(g => g.value === item.garage)?.label || '',
-      'MÜŞTERİ': item.customer?.company_name || ''
+      'MÜŞTERİ': item.company?.name || ''
     }))
     
     const ws = XLSX.utils.json_to_sheet(exportData)
@@ -514,11 +514,11 @@ const FleetPage = ({ showToast }) => {
   }
 
   const LocationDisplay = ({ item }) => {
-    if (item.status === 'rented' && item.customer) {
+    if (item.status === 'rented' && item.company) {
       return (
         <div className="flex items-center gap-1 text-sm">
           <Building className="w-4 h-4 text-blue-500" />
-          <span className="font-medium text-blue-600">{item.customer.company_name}</span>
+          <span className="font-medium text-blue-600">{item.company.name}</span>
           {item.customer_address && (
             <span className="text-gray-500 text-xs ml-1">({item.customer_address})</span>
           )}
@@ -793,12 +793,12 @@ const FleetPage = ({ showToast }) => {
               <p className="text-sm font-medium text-blue-700">Kiralama Bilgileri</p>
               <Select
                 label="Müşteri"
-                value={form.customer_id}
-                onChange={(e) => setForm(prev => ({ ...prev, customer_id: e.target.value }))}
+                value={form.company_id}
+                onChange={(e) => setForm(prev => ({ ...prev, company_id: e.target.value }))}
               >
                 <option value="">Seçin</option>
                 {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </Select>
               <Input
