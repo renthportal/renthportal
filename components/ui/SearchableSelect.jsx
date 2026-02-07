@@ -13,8 +13,8 @@ const SearchableSelect = ({
   disabled,
   className = '',
   renderOption,
-  getOptionLabel = (opt) => opt?.label || opt?.name || opt,
-  getOptionValue = (opt) => opt?.value || opt?.id || opt,
+  getOptionLabel = (opt) => opt?.label || opt?.name || String(opt ?? ''),
+  getOptionValue = (opt) => opt?.value || opt?.id || String(opt ?? ''),
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
