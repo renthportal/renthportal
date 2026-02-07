@@ -42,7 +42,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const { data: custData } = await supabase.from('customers').select('id, company_name')
+      const { data: custData } = await supabase.from('companies').select('id, name')
       setCustomers(custData || [])
 
       if (isAdmin) {
@@ -81,7 +81,7 @@ const ProjectsPage = ({ user, showToast, isAdmin, setActivePage }) => {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const getCustomerName = (cid) => customers.find(c => c.id === cid)?.company_name || '-'
+  const getCustomerName = (cid) => customers.find(c => c.id === cid)?.name || '-'
   const getSalesRepName = (uid) => salesReps.find(u => u.id === uid)?.full_name || '-'
   const getProjectItems = (proposalId) => deliveryItems.filter(d => d.proposal_id === proposalId)
 
